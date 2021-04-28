@@ -41,22 +41,22 @@ public class ConnectedFTPClient implements Runnable{
     private static final String AES_CIPHER_ALGORITHM = "AES/CBC/PKCS5PADDING";
     
     //response stringovi za uspesne razmene AES kljuca i IV
-    private static final String RESP_AES_EXCHANGE_READY = "AcceptingAESKey"; //odgovor da je server spreman da primi AES kljuc
-    private static final String RESP_RECIEVED_AES_KEY = "AESKeyRecieved";
-    private static final String RESP_RECIEVED_IV = "InitializationVectorRecieved";
-    private static final String RESP_WRONG_REQ = "WrongRequest";
+    public static final String RESP_AES_EXCHANGE_READY = "AcceptingAESKey"; //odgovor da je server spreman da primi AES kljuc
+    public static final String RESP_RECIEVED_AES_KEY = "AESKeyRecieved";
+    public static final String RESP_RECIEVED_IV = "InitializationVectorRecieved";
+    public static final String RESP_WRONG_REQ = "WrongRequest";
     
     //Stringovi koji predstavljaju sve zahteve koje klijent moze da posalje
     //Ti zahtevi su: diskonekcija, prikaz fajlova i razmena novog AES kljuca
     //U slucaju zahteva preuzimanja fajla, bice poslat naziv fajla i njegova ekstenzija
     //Zbog toga ne postoji fiksan request String
-    private static final String REQ_DISCONNECT = "Disconnect";
-    private static final String REQ_NEW_AES_KEY = "SendingAESKey";
-    private static final String REQ_SHOW_ALL_FILES = "RequestAllFiles";
-    private static final String REQ_SHOW_PDF_FILES = "RequestPDFFiles";
-    private static final String REQ_SHOW_JPG_FILES = "RequestJPGFiles";
-    private static final String REQ_SHOW_TXT_FILES = "RequestTXTFiles";
-    private static final String REQ_SEND_FILE = "SendFile";
+    public static final String REQ_DISCONNECT = "Disconnect";
+    public static final String REQ_NEW_AES_KEY = "SendingAESKey";
+    public static final String REQ_SHOW_ALL_FILES = "RequestAllFiles";
+    public static final String REQ_SHOW_PDF_FILES = "RequestPDFFiles";
+    public static final String REQ_SHOW_JPG_FILES = "RequestJPGFiles";
+    public static final String REQ_SHOW_TXT_FILES = "RequestTXTFiles";
+    public static final String REQ_SEND_FILE = "SendFile";
 
     //atributi koji se koriste za komunikaciju sa klijentom
     private Socket socket;
@@ -242,7 +242,9 @@ public class ConnectedFTPClient implements Runnable{
             
             //Ako je klijent poslao nekodovanu poruku REQ_NEW_AES_KEY
             //zahteva novi AES kljuc
-            if(new String(receivedBytes).equalsIgnoreCase(REQ_NEW_AES_KEY))
+            //Ako je poslao REQ_DISCONNECT, zeli da se diskonektuje
+            String msgString = new String(receivedBytes);
+            if(msgString.equalsIgnoreCase(REQ_NEW_AES_KEY) || msgString.equalsIgnoreCase(REQ_DISCONNECT))
                 return receivedBytes;
             
             //dekriptuj poruku koristeci tajni AES kljuc
@@ -430,14 +432,17 @@ public class ConnectedFTPClient implements Runnable{
                     this.os.write(RESP_WRONG_REQ.getBytes());
             } while(!requestMsg.equalsIgnoreCase(REQ_NEW_AES_KEY));
             */
-            
-            //kada je zavrsena razmena AES kljuca, server opsluzuje zahteve
-            //sve dok klijent ne posalje zahtev za diskonekciju
+
             do {
-                //primi zahtev i dekriptuj ga (osim ako se posalje REQ_NEW_AES_KEY)
-                System.out.println("Waiting for request");
-                recievedMsg = receiveAndDecryptMessage();
-                requestMsg = new String(recievedMsg);
+                //primi zahtev i dekriptuj ga (osim ako se posalje REQ_NEW_AES_KEY ili prethodno nisu razmenjeni kljucevi)
+                if(this.secretKeyAES == null) {
+                    //kljuc nije razmenjen, preuzmi neenkriptovanu poruku
+                    requestMsg = recieveRequestString();
+                } else {
+                    //razmenjen je kljuc, poruka se dekriptuje (osim ako se posalje REQ_NEW_AES_KEY ili REQ_DISCONNECT)
+                    recievedMsg = receiveAndDecryptMessage();
+                    requestMsg = new String(recievedMsg);
+                }
                 
                 if(requestMsg.equalsIgnoreCase(REQ_NEW_AES_KEY)) {
                     //razmena novog AES kljuca sa klijentom
@@ -489,10 +494,7 @@ public class ConnectedFTPClient implements Runnable{
                         System.out.println("Ne postoji fajl!");
                     }
                 }
-                //this.socket.isConnected je provera u slucaju neocekivanog
-                //gubljenja konekcije (tipa ako korisnik izadje iz programa pre razmene kljuca)
-                System.out.println(this.socket.isConnected());
-            } while(!requestMsg.equalsIgnoreCase(REQ_DISCONNECT) || this.socket.isConnected());
+            } while(!requestMsg.equalsIgnoreCase(REQ_DISCONNECT));
             
             //ako je server izasao iz do while petlje,
             //klijent je poslao REQ_DISCONNECT zahtev klikom
